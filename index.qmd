@@ -88,20 +88,14 @@ Perform the following tasks to prepare the data frame `df` for analysis:
 
 ```{r}
 # add a new column "type" to each data frame
-df1$type <- "White"
-df2$type <- "Red"
+df1 <- df1 %>%
+  mutate("type" = "White")
+df2 <- df2 %>%
+  mutate("type" = "Red")
 
 # combine the two data frames into a single data frame
-df <- rbind(df1, df2)
-
-# add the new column "type" using the mutate function
-df <- df %>% mutate(type = ifelse(type == "White", "White", "Red"))
-
-# Rename the columns of df to replace spaces with underscores
-names(df) <- gsub("\\.", "_", names(df))
-
-# Removing columns
-df <- df %>%
+df <- rbind(df1, df2) %>%
+  rename_with(~ gsub("\\.", "_", .x)) %>%
   select(!c(fixed_acidity, free_sulfur_dioxide))
 
 # Converting type to a factor
@@ -354,20 +348,6 @@ forward_formula <- step(null_model, direction = "forward", scope = formula(full_
 ```{r}
 y <- df$quality
 
-make_model_matrix <- function(X){
-  X <- model.matrix(full_model, df)[, -1]
-  cnames <- colnames(X)
-  for(i in 1:ncol(X)){
-    if(!cnames[i] == "typewhite"){
-      X[, i] <- scale(X[, i])
-    } else {
-      colnames(X)[i] <- "type"
-    }
-  }
-  return(X)
-}
-
-
 X <- make_model_matrix(full_model$call$formula)
 
 lasso <- cv.glmnet(X, y, alpha = 1, nfolds = 5)
@@ -470,7 +450,7 @@ Variable selection
 
 Excluding `quality` from `df` we have $10$ possible predictors as the
 covariates. How many different models can we create using any subset of
-these $10$ coavriates as possible predictors? Justify your answer.
+these $10$ covariates as possible predictors? Justify your answer.
 
 > There are $2^{10} = 1024$ different possible models that can be
 > created using any subset of the $10$ covariates as possible
@@ -544,13 +524,18 @@ Extract the `adj.r.squared` values from `summaries` and use them to
 identify the formula with the ***highest*** adjusted R-squared value.
 
 ```{r}
+#Extracting the adj.r.squared values
+adj_r_squared <- summaries$adj.r.squared
 
+#Formula to identify the highest adjusted R-squared value
+max_rsq_index <- which.max(adj_r_squared)
 ```
 
 Store resulting formula as a variable called `rsq_formula`.
 
 ```{r}
-rsq_formula <- ... # Insert your code
+rsq_formula <- formulas[which.max(adj_r_squared)]
+rsq_formula
 ```
 
 ------------------------------------------------------------------------
@@ -561,13 +546,18 @@ Extract the `AIC` values from `summaries` and use them to identify the
 formula with the ***lowest*** AIC value.
 
 ```{r}
+#Extracting the AIC values from summaries
+aic_values <- summaries$AIC
 
+#Finding the index of the formula with lowest AIC
+min_aic_index <- which.min(aic_values)
 ```
 
 Store resulting formula as a variable called `aic_formula`.
 
 ```{r}
-aic_formula <- ... # Insert your code
+aic_formula <- formulas[min_aic_index]
+aic_formula
 ```
 
 ------------------------------------------------------------------------
@@ -601,6 +591,28 @@ final_formulas <- c(
 -   If we had a dataset with $10,000$ columns, which of these methods
     would you consider for your analyses? Why?
 
+> -   The **`aic_formula`** and **`rsq_formula`** are not the same, as
+>     they are based on different criteria for model selection.
+>     **`rsq_formula`** was selected based on the highest adjusted
+>     R-squared value, while **`aic_formula`** was selected based on the
+>     lowest AIC value. The formulas shortlisted in question 3 were
+>     obtained by exhaustively searching through all possible subsets of
+>     the predictor variables, while the other methods (null, full,
+>     backward, forward, LASSO, and Ridge regression) used different
+>     algorithms to select a subset of variables based on certain
+>     criteria.
+>
+> -   In terms of which method is more reliable. Exhaustive search
+>     through all possible models is not practical for datasets with
+>     many variables, so some form of model selection is necessary.
+>     Because of this LASSO or Ridge regression would be good options.
+>
+> -   If we had a dataset with 10,000 columns, exhaustive search through
+>     all possible models would be computationally infeasibl. In this
+>     case, LASSO or Ridge regression could be good options because they
+>     can handle high-dimensional datasets and automatically shrink the
+>     coefficients of irrelevant predictors towards zero.
+
 ------------------------------------------------------------------------
 
 ###### 4.7 (10 points)
@@ -613,7 +625,12 @@ frame `summary_table`. Summarize your main findings.
 ```{r}
 summary_table <- map(
   final_formulas, 
-  \(x) ... # Insert your code here
+  function(x) {
+    model <- lm(x, data = df)
+    glance(model) %>%
+      select(sigma, adj.r.squared, AIC, df, p.value) %>%
+      mutate(formula = as.character(x))
+  }
 ) %>% bind_rows()
 
 summary_table %>% knitr::kable()
