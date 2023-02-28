@@ -87,23 +87,27 @@ Perform the following tasks to prepare the data frame `df` for analysis:
 5.  Remove rows (if any) with missing values.
 
 ```{r}
-#adding new column `type`
-df1$type <- "white"
-df2$type <- "red"
+# add a new column "type" to each data frame
+df1$type <- "White"
+df2$type <- "Red"
 
-# Combine data frames and add type column
-df <- bind_rows(df1, df2)
+# combine the two data frames into a single data frame
+df <- rbind(df1, df2)
 
-# Rename the columns to replace spaces with underscores
+# add the new column "type" using the mutate function
+df <- df %>% mutate(type = ifelse(type == "White", "White", "Red"))
+
+# Rename the columns of df to replace spaces with underscores
 names(df) <- gsub("\\.", "_", names(df))
 
-# Remove the columns fixed_acidity and free_sulfur_dioxide
-df <- select(df, -fixed_acidity, -free_sulfur_dioxide)
+# Removing columns
+df <- df %>%
+  select(!c(fixed_acidity, free_sulfur_dioxide))
 
-# Convert the type column to a factor
+# Converting type to a factor
 df$type <- as.factor(df$type)
 
-# Remove rows with missing values
+#removing missing value rows
 df <- na.omit(df)
 ```
 
@@ -133,19 +137,22 @@ the difference in means (with the equal variance assumption)
     store its value in a variable called `t1`.
 
 ```{r}
-#computing the difference in means
-diff_mean <- mean(df$quality[df$type == "red"]) - mean(df$quality[df$type == "white"])
+w_mean <- mean(df$quality[df$type == 'White'])
+r_mean <- mean(df$quality[df$type == 'Red'])
+diff_mean <- mean(w_mean - r_mean)
 
-#computing pooled sample variance
-n_red <- sum(df$type == "red")
-n_white <- sum(df$type == "white")
-df_total <- n_red + n_white - 2
-var_red <- var(df$quality[df$type == "red"])
-var_white <- var(df$quality[df$type == "white"])
-sp_squared <- ((n_red - 1) * var_red + (n_white - 1) * var_white) / df_total
+n1 <- length(df$quality[df$type == 'White'])
+n2 <- length(df$quality[df$type == 'Red'])
 
-#computing the t statistic
-t1 <- diff_mean / sqrt(sp_squared * (1/n_red + 1/n_white))
+v1 <- var(df$quality[df$type == 'White'])
+v2 <- var(df$quality[df$type == 'Red'])
+
+sp_squared <- ((n1-1)*v1 + (n2-1)*v2) / (n1+n2-2)
+
+s1 <- sd(df$quality[df$type == 'White'])
+s2 <- sd(df$quality[df$type == 'Red'])
+
+t1 <- diff_mean / sqrt((sp_squared*(1/n1 + 1/n2)))
 t1
 ```
 
@@ -162,7 +169,7 @@ wines using the `t.test()` function with the setting `var.equal=TRUE`.
 Store the t-statistic in `t2`.
 
 ```{r}
-t_test <- t.test(quality ~ type, data = df, var.equal = TRUE) 
+t_test <- t.test(df$quality[df$type == "White"], df$quality[df$type == "Red"], var.equal = TRUE) 
 t2 <- t_test$statistic
 t2
 ```
@@ -177,7 +184,7 @@ coefficient from the model summary. Store this $t$-statistic in `t3`.
 
 ```{r}
 fit <- lm(quality ~ type, data = df)
-t3 <- summary(model)$coefficients[2, "t value"]
+t3 <- summary(fit)$coefficients[2, "t value"]
 t3
 ```
 
@@ -192,16 +199,8 @@ you conclude from this? Why?
 c(t1, t2, t3)
 ```
 
-Based on the values of `t1`, `t2`, and `t3`, we can conclude that there
-is a significant difference in quality between the red and white wines.
-The $t$-Statistic in t2 and the $t$-Statistic in t3 both indicate that
-there is a significant difference in quality between red and white
-wines. The $t$-Statistic in `t1` provides a third way to evaluate the
-difference in means between the two types of wine, and it also supports
-the conclusion that the difference is significant. Overall, the
-consistency in the results across these three differential statistical
-tests provides strong evidence that there is indeed a significant
-difference in quality between red and white wines.
+Based on the values of `t1`, `t2`, and `t3`, we can conclude that all
+three values are the same.
 
 <br><br><br><br> <br><br><br><br> ---
 
@@ -322,7 +321,8 @@ starting model. Store the final formula in an object called
 `backward_formula` using the built-in `formula()` function in R
 
 ```{r}
-
+full_model <- lm(quality ~ ., data = df)
+backward_formula <- step(full_model, direction = "backward", scope = formula(full_model))
 ```
 
 ------------------------------------------------------------------------
@@ -334,7 +334,8 @@ starting model. Store the final formula in an object called
 `forward_formula` using the built-in `formula()` function in R
 
 ```{r}
-
+null_model <- lm(quality ~ 1, df)
+forward_formula <- step(null_model, direction = "forward", scope = formula(full_model))
 ```
 
 ------------------------------------------------------------------------
@@ -351,7 +352,31 @@ starting model. Store the final formula in an object called
     regression with `X` and `y`.
 
 ```{r}
+y <- df$quality
 
+make_model_matrix <- function(X){
+  X <- model.matrix(full_model, df)[, -1]
+  cnames <- colnames(X)
+  for(i in 1:ncol(X)){
+    if(!cnames[i] == "typewhite"){
+      X[, i] <- scale(X[, i])
+    } else {
+      colnames(X)[i] <- "type"
+    }
+  }
+  return(X)
+}
+
+
+X <- make_model_matrix(full_model$call$formula)
+
+lasso <- cv.glmnet(X, y, alpha = 1, nfolds = 5)
+plot(lasso)
+```
+
+```{r}
+ridge <- cv.glmnet(X, y, alpha = 0, nfolds = 5)
+plot(ridge)
 ```
 
 Create side-by-side plots of the ridge and LASSO regression results.
@@ -359,7 +384,8 @@ Interpret your main findings.
 
 ```{r}
 par(mfrow=c(1, 2))
-... # Insert your code here. 
+plot(ridge, pch = 20, main = "Ridge Regression")
+plot(lasso, pch = 20, main = "LASSO Regression")
 ```
 
 ------------------------------------------------------------------------
@@ -370,15 +396,24 @@ Print the coefficient values for LASSO regression at the `lambda.1se`
 value? What are the variables selected by LASSO?
 
 ```{r}
-
+lasso_coef <- coef(lasso, s = "lambda.1se")
+lasso_coef
 ```
+
+> The variables selected by the LASSO regression are `volatile_acidity`,
+> `citric_acid`, `residual_sugar`, `chlorides`, `total_sulfur_dioxide`,
+> `density`, `pH`, `sulphates`, `alcohol` and `type`
 
 Store the variable names with non-zero coefficients in `lasso_vars`, and
 create a formula object called `lasso_formula` using the
 `make_formula()` function provided in the Appendix.
 
 ```{r}
+lasso_vars <- colnames(lasso_coef)[-1]
 
+lasso_formula <- make_formula <- function(lasso_vars){
+  as.formula(paste("quality ~ .", paste(lasso_vars, collapse = "+")))
+}
 ```
 
 ------------------------------------------------------------------------
@@ -389,7 +424,8 @@ Print the coefficient values for ridge regression at the `lambda.1se`
 value? What are the variables selected here?
 
 ```{r}
-
+ridge_coef <- coef(ridge, s = "lambda.1se")
+ridge_coef
 ```
 
 Store the variable names with non-zero coefficients in `ridge_vars`, and
@@ -397,7 +433,11 @@ create a formula object called `ridge_formula` using the
 `make_formula()` function provided in the Appendix.
 
 ```{r}
+ridge_vars <- colnames(ridge_coef)[-1]
 
+ridge_formula <- make_formula <- function(ridge_vars){
+  as.formula(paste("quality ~ ", paste(ridge_vars, collapse = "+")))
+}
 ```
 
 ------------------------------------------------------------------------
@@ -406,6 +446,13 @@ create a formula object called `ridge_formula` using the
 
 What is the difference between stepwise selection, LASSO and ridge based
 on you analyses above?
+
+> Based on the analyses above, we can see that stepwise selection
+> resulted in a model with three predictors, while LASSO and ridge
+> regression selected different sets of predictors. The LASSO model had
+> a single non-zero coefficient, while the ridge model had non-zero
+> coefficients for all predictors, but they were smaller in magnitude
+> than the coefficients in the full model.
 
 <br><br><br><br> <br><br><br><br> ---
 
@@ -424,6 +471,11 @@ Variable selection
 Excluding `quality` from `df` we have $10$ possible predictors as the
 covariates. How many different models can we create using any subset of
 these $10$ coavriates as possible predictors? Justify your answer.
+
+> There are $2^{10} = 1024$ different possible models that can be
+> created using any subset of the $10$ covariates as possible
+> predictors. This is because for each of the models, we can either
+> include or exclude them from the model.
 
 ------------------------------------------------------------------------
 
@@ -448,9 +500,9 @@ function from the `purrr` package.
 ```{r}
 formulas <- map(
   1:length(x_vars),
-  \(x){
-    vars <- combn(...) # Insert code here
-    map(vars, ...) # Insert code here
+  function(x){
+    vars <- combn(x_vars, x, simplify = FALSE)
+    map(vars, make_formula)
   }
 ) %>% unlist()
 ```
@@ -478,8 +530,10 @@ single tibble of summaries using the `bind_rows()` function from
 `dplyr`.
 
 ```{r}
-models <- map(formulas, ...) # Insert your code here
-summaries <- map(models, ...) # Insert your code here
+models <- map(formulas, ~lm(.x, data = df))
+summaries <- map(models, broom::glance) %>%
+  bind_rows()
+summaries
 ```
 
 ------------------------------------------------------------------------
@@ -599,7 +653,7 @@ outputs a rescaled model matrix `X` in a format amenable for `glmnet()`
 
 ```{r}
 make_model_matrix <- function(formula){
-  X <- model.matrix(rsq_formula, df)[, -1]
+  X <- model.matrix(formula, df)[, -1]
   cnames <- colnames(X)
   for(i in 1:ncol(X)){
     if(!cnames[i] == "typewhite"){
