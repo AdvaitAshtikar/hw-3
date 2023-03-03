@@ -193,8 +193,8 @@ you conclude from this? Why?
 c(t1, t2, t3)
 ```
 
-Based on the values of `t1`, `t2`, and `t3`, we can conclude that all
-three values are the same.
+> Based on the values of `t1`, `t2`, and `t3`, we can conclude that all
+> three values are the same.
 
 <br><br><br><br> <br><br><br><br> ---
 
@@ -226,9 +226,9 @@ summary_all
 
 > From the model summary, we can see that several of the predictor
 > variables have a statistically significant effect on the quality of
-> wine, as indicated by their \$p\$-value. On the other hand, the
-> fixed_acidity and free_sulfur_dioxide predictors have been removed due
-> to their $p$-value.
+> wine, as indicated by their $p$-value. On the other hand, the
+> `fixed_acidity` and `free_sulfur_dioxide` predictors have been removed
+> due to their $p$-value.
 
 ------------------------------------------------------------------------
 
@@ -346,16 +346,31 @@ forward_formula <- step(null_model, direction = "forward", scope = formula(full_
     regression with `X` and `y`.
 
 ```{r}
+#making y vector
 y <- df$quality
 
-X <- make_model_matrix(full_model$call$formula)
+#creating a design matrix
+make_model_matrix <- function(formula){
+  X <- model.matrix(full_model, df)[, -1]
+  cnames <- colnames(X)
+  for(i in 1:ncol(X)){
+    if(!cnames[i] == "typeWhite"){
+      X[, i] <- scale(X[, i])
+    } else {
+      colnames(X)[i] <- "type"
+    }
+  }
+  return(X)
+}
 
-lasso <- cv.glmnet(X, y, alpha = 1, nfolds = 5)
+#lasso regression and plot
+lasso <- cv.glmnet(X, y, alpha = 1)
 plot(lasso)
 ```
 
 ```{r}
-ridge <- cv.glmnet(X, y, alpha = 0, nfolds = 5)
+#ridge regression and plot
+ridge <- cv.glmnet(x = make_model_matrix(forward_formula), y = y, alpha = 0, nfolds = 5)
 plot(ridge)
 ```
 
@@ -363,6 +378,7 @@ Create side-by-side plots of the ridge and LASSO regression results.
 Interpret your main findings.
 
 ```{r}
+#combining plots for both regressions
 par(mfrow=c(1, 2))
 plot(ridge, pch = 20, main = "Ridge Regression")
 plot(lasso, pch = 20, main = "LASSO Regression")
@@ -381,19 +397,17 @@ lasso_coef
 ```
 
 > The variables selected by the LASSO regression are `volatile_acidity`,
-> `citric_acid`, `residual_sugar`, `chlorides`, `total_sulfur_dioxide`,
-> `density`, `pH`, `sulphates`, `alcohol` and `type`
+> `residual_sugar`, `chlorides`, `total_sulfur_dioxide`, `pH`,
+> `sulphates`, `alcohol` and `type`
 
 Store the variable names with non-zero coefficients in `lasso_vars`, and
 create a formula object called `lasso_formula` using the
 `make_formula()` function provided in the Appendix.
 
 ```{r}
-lasso_vars <- colnames(lasso_coef)[-1]
-
-lasso_formula <- make_formula <- function(lasso_vars){
-  as.formula(paste("quality ~ .", paste(lasso_vars, collapse = "+")))
-}
+lasso_vars <- rownames(lasso_coef)[which(abs(lasso_coef) > 0)][-1]
+lasso_formula <- make_formula(lasso_vars)
+lasso_formula
 ```
 
 ------------------------------------------------------------------------
@@ -413,11 +427,10 @@ create a formula object called `ridge_formula` using the
 `make_formula()` function provided in the Appendix.
 
 ```{r}
-ridge_vars <- colnames(ridge_coef)[-1]
+ridge_vars <- rownames(ridge_coef)[which(abs(ridge_coef) > 0)][-1]
+ridge_formula <- make_formula(ridge_vars)
 
-ridge_formula <- make_formula <- function(ridge_vars){
-  as.formula(paste("quality ~ ", paste(ridge_vars, collapse = "+")))
-}
+ridge_formula
 ```
 
 ------------------------------------------------------------------------
@@ -624,17 +637,15 @@ frame `summary_table`. Summarize your main findings.
 
 ```{r}
 summary_table <- map(
-  final_formulas, 
-  function(x) {
-    model <- lm(x, data = df)
-    glance(model) %>%
-      select(sigma, adj.r.squared, AIC, df, p.value) %>%
-      mutate(formula = as.character(x))
-  }
+  final_formulas,
+  ~glance(lm(.x, data = df)) %>% 
+    select(sigma, adj.r.squared, AIC, df, p.value)
 ) %>% bind_rows()
 
 summary_table %>% knitr::kable()
 ```
+
+> From the table we can summarize that
 
 ::: {.hidden unless-format="pdf"}
 \pagebreak
