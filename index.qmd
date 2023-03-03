@@ -194,7 +194,11 @@ c(t1, t2, t3)
 ```
 
 > Based on the values of `t1`, `t2`, and `t3`, we can conclude that all
-> three values are the same.
+> three values are the same. We can also conclude that there is a
+> substantial difference between the qualities of red and white wines.
+> This is because linear regression determines the linear correlation
+> between the predictor and response variables whereas the $t$-test
+> determines the linear relationship. Hence, they are the same
 
 <br><br><br><br> <br><br><br><br> ---
 
@@ -364,13 +368,13 @@ make_model_matrix <- function(formula){
 }
 
 #lasso regression and plot
-lasso <- cv.glmnet(X, y, alpha = 1)
+lasso <- cv.glmnet(x = make_model_matrix(forward_formula), y, alpha = 1)
 plot(lasso)
 ```
 
 ```{r}
 #ridge regression and plot
-ridge <- cv.glmnet(x = make_model_matrix(forward_formula), y = y, alpha = 0, nfolds = 5)
+ridge <- cv.glmnet(x = make_model_matrix(forward_formula), y, alpha = 0, nfolds = 5)
 plot(ridge)
 ```
 
@@ -383,6 +387,12 @@ par(mfrow=c(1, 2))
 plot(ridge, pch = 20, main = "Ridge Regression")
 plot(lasso, pch = 20, main = "LASSO Regression")
 ```
+
+> We can see from the graphs that the $x$-axis represents the $\lambda$
+> values and the $y$ - axis displays the $mean-squared \space error$ for
+> the predictor variables. We can see that as the value of $\lambda$
+> increases the model becomes more regularized giving simpler
+> coefficients and simpler models.
 
 ------------------------------------------------------------------------
 
@@ -406,6 +416,13 @@ create a formula object called `lasso_formula` using the
 
 ```{r}
 lasso_vars <- rownames(lasso_coef)[which(abs(lasso_coef) > 0)][-1]
+
+make_formula <- function(x){
+  as.formula(
+    paste("quality ~ ", paste(x, collapse = " + "))
+  )
+}
+
 lasso_formula <- make_formula(lasso_vars)
 lasso_formula
 ```
@@ -441,10 +458,10 @@ What is the difference between stepwise selection, LASSO and ridge based
 on you analyses above?
 
 > Based on the analyses above, we can see that stepwise selection
-> resulted in a model with three predictors, while LASSO and ridge
+> resulted in a model with eight predictors, while LASSO and ridge
 > regression selected different sets of predictors. The LASSO model had
-> a single non-zero coefficient, while the ridge model had non-zero
-> coefficients for all predictors, but they were smaller in magnitude
+> a four non-zero coefficients, while the ridge model had non-zero
+> coefficients for ten predictors, but they were smaller in magnitude
 > than the coefficients in the full model.
 
 <br><br><br><br> <br><br><br><br> ---
@@ -594,37 +611,38 @@ final_formulas <- c(
   rsq_formula,
   aic_formula
 )
+
 ```
 
 -   Are `aic_formula` and `rsq_formula` the same? How do they differ
     from the formulas shortlisted in question 3?
 
+    > The **`aic_formula`** and **`rsq_formula`** are not the same, as
+    > they are based on different criteria for model selection.
+    > **`rsq_formula`** was selected based on the highest adjusted
+    > R-squared value, while **`aic_formula`** was selected based on the
+    > lowest AIC value. The formulas shortlisted in question 3 were
+    > obtained by exhaustively searching through all possible subsets of
+    > the predictor variables, while the other methods (null, full,
+    > backward, forward, LASSO, and Ridge regression) used different
+    > algorithms to select a subset of variables based on certain
+    > criteria.
+
 -   Which of these is more reliable? Why?
+
+    > In terms of which method is more reliable `rsq_formula`. With a
+    > large dataset `rsq` is going to have a higher predictive power
+    > than the AIC model.
 
 -   If we had a dataset with $10,000$ columns, which of these methods
     would you consider for your analyses? Why?
 
-> -   The **`aic_formula`** and **`rsq_formula`** are not the same, as
->     they are based on different criteria for model selection.
->     **`rsq_formula`** was selected based on the highest adjusted
->     R-squared value, while **`aic_formula`** was selected based on the
->     lowest AIC value. The formulas shortlisted in question 3 were
->     obtained by exhaustively searching through all possible subsets of
->     the predictor variables, while the other methods (null, full,
->     backward, forward, LASSO, and Ridge regression) used different
->     algorithms to select a subset of variables based on certain
->     criteria.
->
-> -   In terms of which method is more reliable. Exhaustive search
->     through all possible models is not practical for datasets with
->     many variables, so some form of model selection is necessary.
->     Because of this LASSO or Ridge regression would be good options.
->
-> -   If we had a dataset with 10,000 columns, exhaustive search through
->     all possible models would be computationally infeasibl. In this
->     case, LASSO or Ridge regression could be good options because they
->     can handle high-dimensional datasets and automatically shrink the
->     coefficients of irrelevant predictors towards zero.
+    > If we had a dataset with 10,000 columns, exhaustive search through
+    > all possible models would be computationally indefeasible. In this
+    > case, LASSO option would be better because it can handle
+    > high-dimensional datasets and automatically shrink the
+    > coefficients of irrelevant predictors towards zero. Also, LASSO is
+    > preferred over Ridge, because it has feature selection.
 
 ------------------------------------------------------------------------
 
@@ -635,17 +653,23 @@ Use `map()` and `glance()` to extract the
 obtained from `final_formulas`. Bind them together into a single data
 frame `summary_table`. Summarize your main findings.
 
-```{r}
+```{}
 summary_table <- map(
-  final_formulas,
-  ~glance(lm(.x, data = df)) %>% 
+  final_formulas, ~ lm(.x, data = df) %>% 
+    broom::glance() %>% 
     select(sigma, adj.r.squared, AIC, df, p.value)
 ) %>% bind_rows()
 
 summary_table %>% knitr::kable()
 ```
 
-> From the table we can summarize that
+> We can see that all the models have extremely significant $p$-values.
+> The $p$-values were so small that they were nearing zero. We can also
+> see that a couple of the methods came up with the same model.
+> Backward, forward, and AIC methods all came up with the same model,
+> while the ridge method was the same as the full model. We can also see
+> that besides the null model, all the sigma values, adjusted r-squared
+> values, and AIC values were extremely close for all the models.
 
 ::: {.hidden unless-format="pdf"}
 \pagebreak
